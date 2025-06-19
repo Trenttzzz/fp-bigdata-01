@@ -1,4 +1,5 @@
-FROM jupyter/pyspark-notebook:spark-3.5.1
+# Menggunakan tag spark-3.5.0 yang valid dan tersedia di Docker Hub
+FROM jupyter/pyspark-notebook:spark-3.5.0
 
 USER root
 
@@ -7,12 +8,13 @@ RUN apt-get update && apt-get install -y \
     curl \
     wget \
     vim \
-    git &&
+    git && \
     rm -rf /var/lib/apt/lists/*
 
 USER $NB_UID
 
-# Install Python packages
+# Install a LIGHTER set of Python packages
+# REMOVED: pycaret, xgboost, lightgbm, streamlit to save resources
 RUN pip install --no-cache-dir \
     boto3==1.34.34 \
     delta-spark==3.2.0 \
@@ -20,20 +22,21 @@ RUN pip install --no-cache-dir \
     pandas==2.1.4 \
     pyarrow==15.0.0 \
     mlflow==2.10.2 \
-    pycaret==3.3.2 \
-    scikit-learn==1.4.0 \
-    xgboost==2.0.3 \
-    lightgbm==4.3.0 \
+    scikit-learn==1.4.2 \
     plotly==5.18.0 \
-    streamlit==1.31.0 \
     fastapi==0.109.0 \
     uvicorn==0.27.0 \
     psycopg2-binary==2.9.9 \
-    sqlalchemy==2.0.25
+    sqlalchemy==2.0.25 \
+    textblob==0.18.0.post0
 
 # Copy Spark configuration
 COPY ./config/spark-defaults.conf $SPARK_HOME/conf/
-COPY ./config/log4j.properties $SPARK_HOME/conf/
 
-# Set working directory
-WORKDIR /home/k1/work
+# Set working directory (menggunakan path default dari base image)
+WORKDIR /home/jovyan/work
+
+# Ensure proper permissions
+USER root
+RUN mkdir -p /home/jovyan/work && chown -R jovyan:users /home/jovyan/work
+USER $NB_UID

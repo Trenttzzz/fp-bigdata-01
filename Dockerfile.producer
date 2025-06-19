@@ -2,17 +2,14 @@ FROM python:3.9-slim
 
 WORKDIR /app
 
-# Install dependencies
+# Install Python dependencies
 RUN pip install --no-cache-dir \
   kafka-python==2.0.2 \
-  pandas==2.1.4 \
-  faker==22.5.0 \
-  schedule==1.2.0 \
-  pyarrow==15.0.0
+  pandas==2.1.4
 
-# Copy producer scripts
-COPY ./producer-scripts/ ./scripts/
-COPY ./datasets/ ./datasets/
+# Copy producer scripts and datasets into the image
+COPY ./producer-scripts/ /app/
+COPY ./datasets/ /app/datasets/
 
-# Run the AutoMQ producer
-CMD ["python", "scripts/ecommerce_producer.py"]
+# Run the correct producer script
+CMD ["python", "ecommerce_producer.py"]

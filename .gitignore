@@ -1,0 +1,55 @@
+# Byte-compiled / optimized / C extensions
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*cpython-39.pyc
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# IDE / Editor specific files
+.vscode/
+.idea/
+*.swp
+*~
+
+# Datasets - Ignore all files in the datasets folder
+# It's better to provide a download link in the README
+datasets/
+
+# Large files and archives
+*.zip
+*.gz
+*.tar
+*.rar
+
+# Logs and stateful data from Docker volumes
+# (These are typically managed by Docker, but it's good practice to ignore them)
+automq-logs/
+kafka_data/
+zookeeper_data/
+minio_data/
+postgres_data/
+spark_data/
+spark_checkpoints/
+
+# Operating System files
+.DS_Store
+Thumbs.db
