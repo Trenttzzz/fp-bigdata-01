@@ -1,6 +1,6 @@
 import os
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import from_json, col, when, current_timestamp, length, regexp_count, lit
+from pyspark.sql.functions import from_json, col, when, current_timestamp, length, regexp_count, lit, lower
 from pyspark.sql.types import StructType, StructField, StringType, LongType, IntegerType, DoubleType
 
 def main():
@@ -84,15 +84,15 @@ def main():
         print("✅ Bronze stream started.")
 
         # Silver Layer - Cleaned and enriched data with simple sentiment analysis
-        # Using rule-based sentiment scoring instead of TextBlob UDF
+        # Using rule-based sentiment scoring with correct PySpark syntax
         silver_df = parsed_df \
             .filter(col("Text").isNotNull() & (length(col("Text")) > 10)) \
             .withColumn("processed_timestamp", current_timestamp()) \
             .withColumn("positive_words", 
-                       regexp_count(col("Text").lower(), 
+                       regexp_count(lower(col("Text")), 
                                   "good|great|excellent|amazing|wonderful|fantastic|love|best|perfect|awesome")) \
             .withColumn("negative_words", 
-                       regexp_count(col("Text").lower(), 
+                       regexp_count(lower(col("Text")), 
                                   "bad|terrible|awful|hate|worst|horrible|disgusting|disappointing|useless|poor")) \
             .withColumn("sentiment_score", 
                        (col("positive_words") - col("negative_words")).cast("double")) \
