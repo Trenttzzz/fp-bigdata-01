@@ -13,6 +13,11 @@ def main():
     """
     print("🚀 Starting Spark Streaming ETL Job...")
 
+    aws_access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
+    aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+    s3_endpoint_url = os.getenv("S3_ENDPOINT_URL", "http://minio:9000")
+
+
     required_packages = [
         "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0",
         "io.delta:delta-spark_2.12:3.2.0",
@@ -21,12 +26,19 @@ def main():
     ]
     spark_packages = ",".join(required_packages)
 
+    
     spark = SparkSession.builder \
         .appName("AutomatedAmazonReviewsETL") \
         .config("spark.jars.packages", spark_packages) \
         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
         .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog") \
+        .config("spark.hadoop.fs.s3a.access.key", aws_access_key_id) \
+        .config("spark.hadoop.fs.s3a.secret.key", aws_secret_access_key) \
+        .config("spark.hadoop.fs.s3a.endpoint", s3_endpoint_url) \
+        .config("spark.hadoop.fs.s3a.path.style.access", "true") \
+        .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
         .getOrCreate()
+
 
     spark.sparkContext.setLogLevel("WARN")
     print("✅ Spark Session initialized successfully.")
