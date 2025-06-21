@@ -70,10 +70,10 @@ def run_producer():
                 for index, row in chunk_df.iterrows():
                     event = row.to_dict()
                     producer.send(topic, value=event, key=str(event.get('Id')))
-                    time.sleep(0.01) 
                 
                 logger.info(f"Selesai mengirim {len(chunk_df)} event dari potongan ke-{chunk_num}.")
-
+                time.sleep(15 * 60) # Delay 15 menit antara pengiriman setiap event 
+                
         logger.info("Semua data telah berhasil diproses dan dikirim.")
         producer.flush()
 

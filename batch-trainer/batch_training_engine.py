@@ -61,7 +61,9 @@ class BatchTrainingEngine:
     def train_model(self):
         df = self.load_training_data()
         if df is None:
-            return
+            self.logger.warning("Skipping training run as no data was loaded.")
+            return False # Return False to indicate failure/skip
+
 
         mlflow.set_experiment("Helpfulness_Prediction_Automated")
         
@@ -74,7 +76,8 @@ class BatchTrainingEngine:
             
             preprocessor = ColumnTransformer(
                 transformers=[
-                    ('tfidf', TfidfVectorizer(stop_words='english', max_features=5000, ngram_range=(1,2))),
+                    # CORRECTED: Added 'Text' as the column for the TfidfVectorizer
+                    ('tfidf', TfidfVectorizer(stop_words='english', max_features=5000, ngram_range=(1,2)), 'Text'),
                     ('scaler', StandardScaler(), ['review_length', 'Score'])
                 ])
 
@@ -97,3 +100,4 @@ class BatchTrainingEngine:
                 registered_model_name="review-helpfulness-classifier"
             )
             self.logger.info("📦 Model successfully logged to MLflow.")
+            return True

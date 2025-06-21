@@ -1,0 +1,11 @@
+FROM bitnami/spark:3.5
+
+# Switch to root user to install packages
+USER root
+
+# Install textblob and download its required NLTK corpora
+RUN pip install textblob && \
+    python -m textblob.download_corpora
+
+# Switch back to the non-root user
+USER 1001
