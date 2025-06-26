@@ -305,3 +305,17 @@ services:
       - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}
       - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
     restart: on-failure
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    container_name: lakehouse-dashboard
+    networks:
+      - lakehouse
+    ports:
+      - "3000:80"
+    depends_on:
+      model-api:
+        condition: service_started
+    restart: unless-stopped

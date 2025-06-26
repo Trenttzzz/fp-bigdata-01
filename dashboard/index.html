@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Product Hit Predictor</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <div class="container">
+    <h1>Product Hit Predictor</h1>
+    <p>Enter the product features below to predict if it will be a hit.</p>
+    <form id="prediction-form">
+      <div class="form-group">
+        <label for="avg_sentiment">Average Sentiment Score:</label>
+        <input type="number" id="avg_sentiment" name="avg_sentiment" step="0.01" value="0.5" required>
+      </div>
+      <div class="form-group">
+        <label for="avg_score">Average Star Rating:</label>
+        <input type="number" id="avg_score" name="avg_score" step="0.1" value="4.3" required>
+      </div>
+      <div class="form-group">
+        <label for="review_count">Number of Reviews:</label>
+        <input type="number" id="review_count" name="review_count" value="10" required>
+      </div>
+      <div class="form-group">
+        <label for="score_stddev">Standard Deviation of Score:</label>
+        <input type="number" id="score_stddev" name="score_stddev" step="0.01" value="0.8" required>
+      </div>
+      <div class="form-group">
+        <label for="avg_helpfulness">Average Helpfulness Ratio:</label>
+        <input type="number" id="avg_helpfulness" name="avg_helpfulness" step="0.01" value="0.3" required>
+      </div>
+      <button type="submit">Predict</button>
+    </form>
+    <div id="result-container" class="hidden">
+      <h2>Prediction Result</h2>
+      <p id="prediction-output"></p>
+      <p id="model-version-output"></p>
+    </div>
+  </div>
+  <script src="script.js"></script>
+</body>
+
+</html>

@@ -70,6 +70,7 @@ Once all services are running:
 | Service           | URL                        | Purpose                                |
 | ----------------- | -------------------------- | -------------------------------------- |
 | **JupyterLab**    | http://localhost:8888      | Data exploration & ML experiments      |
+| **Dashboard**     | http://localhost:3000      | Product Hit Predictor UI               |
 | **MLflow UI**     | http://localhost:5000      | ML model tracking & registry           |
 | **Model API**     | http://localhost:8000/docs | API for model predictions              |
 | **Spark UI**      | http://localhost:8081      | Monitor data processing jobs           |

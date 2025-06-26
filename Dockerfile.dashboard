@@ -1,21 +1,14 @@
-# Use a standard Python slim image as the base
-FROM python:3.9-slim
+# Use a lightweight Nginx image
+FROM nginx:1.25-alpine
 
-# Set the working directory in the container
-WORKDIR /app
+# Remove the default Nginx welcome page
+RUN rm /usr/share/nginx/html/*
 
-# Install Python dependencies for the dashboard
-RUN pip install --no-cache-dir \
-    streamlit==1.31.0 \
-    pandas==2.1.4 \
-    plotly==5.18.0 \
-    requests==2.31.0
+# Copy the static frontend files to the Nginx html directory
+COPY ./dashboard/ /usr/share/nginx/html/
 
-# Copy the dashboard application code into the container
-COPY ./dashboard/ /app/
+# Expose port 80 for Nginx
+EXPOSE 80
 
-# Expose the port that Streamlit runs on
-EXPOSE 3000
-
-# The command to run the Streamlit app
-CMD ["streamlit", "run", "app.py", "--server.port=3000", "--server.address=0.0.0.0"]
+# The default Nginx command will start the server
+CMD ["nginx", "-g", "daemon off;"]
