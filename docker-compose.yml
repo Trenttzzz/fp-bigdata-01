@@ -51,6 +51,7 @@ services:
       mc mb minio/silver --ignore-existing;
       mc mb minio/gold --ignore-existing;
       mc mb minio/models --ignore-existing;
+      mc mb minio/dashboard --ignore-existing;
       echo 'MinIO buckets created successfully';
       "
 

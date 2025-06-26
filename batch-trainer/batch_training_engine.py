@@ -1,4 +1,7 @@
 import os
+import json
+import boto3
+from botocore.config import Config
 import logging
 import mlflow
 import mlflow.sklearn
@@ -94,6 +97,41 @@ class BatchTrainingEngine:
         except Exception as e:
             self.logger.error(f"❌ Error creating feature table: {e}", exc_info=True)
             return None
+        
+    def generate_dashboard_data(self, df_features):
+        self.logger.info("📊 Generating dashboard data...")
+        try:
+            kpis = {
+                'total_products': df_features.shape[0],
+                'avg_score': round(df_features['avg_score'].mean(), 2),
+                'total_hits': int(df_features['is_hit'].sum()),
+                'hit_percentage': round(df_features['is_hit'].mean() * 100, 1),
+                'last_updated': datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')
+            }
+
+            product_list = df_features.sort_values(by='review_count', ascending=False) \
+                                      .head(100) \
+                                      .to_dict(orient='records')
+            
+            dashboard_content = {'kpis': kpis, 'product_list': product_list}
+
+            s3_client = boto3.client(
+                's3',
+                endpoint_url=os.getenv("MLFLOW_S3_ENDPOINT_URL"),
+                aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+                aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+                config=Config(signature_version='s3v4')
+            )
+            
+            s3_client.put_object(
+                Bucket='dashboard',
+                Key='dashboard_summary.json',
+                Body=json.dumps(dashboard_content, indent=4).encode('utf-8'),
+                ContentType='application/json'
+            )
+            self.logger.info("✅ Dashboard data successfully uploaded to MinIO.")
+        except Exception as e:
+            self.logger.error(f"❌ Failed to generate or upload dashboard data: {e}", exc_info=True)
 
     def train_model(self):
         df = self.create_feature_table()
@@ -194,5 +232,8 @@ class BatchTrainingEngine:
                 self.logger.info("📦 Model successfully logged to MLflow.")
             else:
                 self.logger.warning(f"⚠️ Model performance below threshold (F1: {f1:.4f}, AUC: {auc:.4f})")
-                
+
+            # Generate and upload dashboard data
+            self.generate_dashboard_data(df)
+
         return True

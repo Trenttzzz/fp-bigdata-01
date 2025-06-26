@@ -1,6 +1,9 @@
 # api/main.py
 import os
-from fastapi import FastAPI, HTTPException
+import json
+import boto3
+from botocore.exceptions import ClientError
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import mlflow
@@ -70,6 +73,25 @@ async def predict(model_name: str, request: PredictionRequest):
             prediction=int(prediction[0]),
             model_version=model_version.version
         )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
+    
+@app.get("/api/dashboard")
+async def get_dashboard_data():
+    try:
+        s3_client = boto3.client(
+            's3',
+            endpoint_url=os.getenv("MLFLOW_S3_ENDPOINT_URL"),
+            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY")
+        )
+        response = s3_client.get_object(Bucket='dashboard', Key='dashboard_summary.json')
+        content = response['Body'].read().decode('utf-8')
+        return Response(content=content, media_type="application/json")
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'NoSuchKey':
+            raise HTTPException(status_code=404, detail="Dashboard data not found. Wait for batch trainer to run.")
+        raise HTTPException(status_code=500, detail=f"S3 Error: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
 
