@@ -1,12 +1,26 @@
 # api/main.py
 import os
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import mlflow
 import pandas as pd
 from typing import Dict, Any
 
 app = FastAPI(title="Lakehouse ML API", version="1.0.0")
+
+# --- Add CORS Middleware ---
+origins = [
+    "http://localhost:3000", # The origin for dashboard
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # --- CORRECTED API Data Models ---
 # This schema now matches the features our new model was trained on.
