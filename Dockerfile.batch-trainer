@@ -2,15 +2,14 @@ FROM python:3.9-slim
 
 WORKDIR /app
 
-# Install system dependencies for Java, Spark, and 'ps' command
-# CORRECTED: Use openjdk-17 as openjdk-11 is not available in the base image's repository
+# Install ALL required system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     openjdk-17-jdk-headless \
     procps \
+    libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Set JAVA_HOME environment variable
-# CORRECTED: Update JAVA_HOME to point to the new JDK version
+# Set the JAVA_HOME environment variable for PySpark
 ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 
 # Install Python dependencies
@@ -23,62 +22,52 @@ RUN pip install --no-cache-dir \
     scikit-learn==1.4.2 \
     kafka-python==2.0.2 \
     psycopg2-binary==2.9.9 \
-    schedule==1.2.0
+    schedule==1.2.0 \
+    lightgbm==4.3.0
 
 # Copy Spark configuration
 COPY ./config/spark-defaults.conf /usr/local/lib/python3.9/site-packages/pyspark/conf/
 
-# Pre-download Spark packages to avoid long downloads on every startup
-# This command initializes a Spark session, which triggers the package download, and then quits.
+# Pre-download Spark packages during build
 RUN python -c "from pyspark.sql import SparkSession; spark = SparkSession.builder.getOrCreate(); spark.stop()"
-
 
 # Copy the main logic script
 COPY ./batch-trainer/batch_training_engine.py /app/
 
-# Create the main script to run the scheduler
-# CORRECTED: Escaped the backslashes in the format string (\\" instead of \")
-RUN echo '#!/usr/bin/env python3\n\
-import time\n\
-import schedule\n\
-import logging\n\
-from batch_training_engine import BatchTrainingEngine\n\
-\n\
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")\n\
-logger = logging.getLogger(__name__)\n\
-\n\
-def main():\n\
-    try:\n\
-        logger.info("Starting Batch Training Service...")\n\
-        trainer = BatchTrainingEngine()\n\
-        \n\
-        # --- Initial Training with Retry Logic ---\n\
-        logger.info("Attempting initial training on startup...")\n\
-        initial_training_successful = False\n\
-        for attempt in range(1, 6): # Try up to 5 times\n\
-            logger.info(f"Initial training attempt {attempt}...")\n\
-            if trainer.train_model():\n\
-                initial_training_successful = True\n\
-                logger.info("✅ Initial training successful.")\n\
-                break\n\
-            logger.warning(f"Initial training attempt {attempt} failed, data might not be ready. Retrying in 2 minutes...")\n\
-            time.sleep(120)\n\
-        \n\
-        if not initial_training_successful:\n\
-            logger.error("❌ Could not complete initial training after several attempts. The service will continue with scheduled runs.")\n\
-        \n\
-        # Schedule future jobs\n\
-        schedule.every(30).minutes.do(trainer.train_model)\n\
-        \n\
-        logger.info("Batch training scheduler started.")\n\
-        while True:\n\
-            schedule.run_pending()\n\
-            time.sleep(60)\n\
-    except Exception as e:\n\
-        logger.error(f"Batch trainer failed to start: {e}", exc_info=True)\n\
-\n\
-if __name__ == "__main__":\n\
-    main()' > /app/run_trainer.py
+# Create the main script to run the scheduler using a "here document" for reliability
+RUN <<EOF /bin/sh -c 'cat > /app/run_trainer.py'
+#!/usr/bin/env python3
+import time
+import schedule
+import logging
+from batch_training_engine import BatchTrainingEngine
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
+
+def main():
+    try:
+        logger.info("--- Starting Batch Training Service ---")
+        trainer = BatchTrainingEngine()
+        
+        # Schedule to run every 3 minutes
+        schedule.every(3).minutes.do(trainer.train_model)
+        
+        logger.info("Running initial training on startup...")
+        time.sleep(120) # Wait 2 minutes before first run
+        trainer.train_model()
+        
+        logger.info("--- Batch training scheduler started. Waiting for next run... ---")
+        while True:
+            schedule.run_pending()
+            time.sleep(60)
+            
+    except Exception as e:
+        logger.error(f"Batch trainer failed critically: {e}", exc_info=True)
+
+if __name__ == "__main__":
+    main()
+EOF
 
 # Make the script executable
 RUN chmod +x /app/run_trainer.py

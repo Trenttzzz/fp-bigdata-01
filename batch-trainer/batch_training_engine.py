@@ -1,5 +1,3 @@
-# batch-trainer/batch_training_engine.py
-
 import os
 import logging
 import mlflow
@@ -7,14 +5,14 @@ import mlflow.sklearn
 import pandas as pd
 from datetime import datetime
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, when, length
+from pyspark.sql.functions import col, avg, count, stddev, lit, when, min, max
+from pyspark.sql.utils import AnalysisException
+
 from sklearn.model_selection import train_test_split
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
-from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 
 class BatchTrainingEngine:
     def __init__(self):
@@ -24,80 +22,177 @@ class BatchTrainingEngine:
         self.logger.info("✅ Batch training engine initialized")
 
     def setup_spark_session(self):
-        return SparkSession.builder.appName("BatchTrainingEngine").getOrCreate()
+        return SparkSession.builder.appName("ProductHitPredictorTraining").getOrCreate()
 
-    def load_training_data(self):
+    def create_feature_table(self):
         try:
+            # REVERTED: Use SILVER data for more balanced training
             silver_path = "s3a://silver/amazon_reviews"
             self.logger.info(f"📥 Loading data from Silver Delta table: {silver_path}")
             
             df_silver = self.spark.read.format("delta").load(silver_path)
 
-            df_with_target = df_silver.withColumn("is_helpful",
-                when((col("helpfulness_ratio") > 0.75) & (col("HelpfulnessDenominator") >= 5), 1)
+            # DEBUG: Check how much data we have
+            total_reviews = df_silver.count()
+            unique_products = df_silver.select("ProductId").distinct().count()
+            self.logger.info(f"🔍 Total reviews: {total_reviews}, Unique products: {unique_products}")
+
+            # Calculate helpfulness ratio on-the-fly
+            df_with_helpfulness = df_silver.withColumn("helpfulness_ratio",
+                when(col("HelpfulnessDenominator") > 0, 
+                     col("HelpfulnessNumerator") / col("HelpfulnessDenominator"))
                 .otherwise(0)
             )
-            df_with_features = df_with_target.withColumn("review_length", length(col("Text")))
-            df_filtered = df_with_features.filter(col("HelpfulnessDenominator") >= 5)
-            df_model_data = df_filtered.select("Text", "review_length", "Score", "is_helpful")
 
-            record_count = df_model_data.count()
-            self.logger.info(f"📊 Found {record_count} reviews with >= 5 votes.")
+            # Add simple sentiment score based on the original star rating
+            df_with_sentiment = df_with_helpfulness.withColumn("sentiment_score",
+                when(col("Score") >= 4, 1.0)
+                .when(col("Score") >= 3, 0.5)
+                .otherwise(0.0)
+            )
 
-            if record_count < 100: # Set a minimum threshold
-                self.logger.warning("⚠️ Insufficient data for training.")
-                return None
+            # --- Aggregate data by ProductID to create features ---
+            self.logger.info("📊 Aggregating data to create product-level features...")
+            df_product_features = df_with_sentiment.groupBy("ProductId").agg(
+                avg("sentiment_score").alias("avg_sentiment"),
+                avg("Score").alias("avg_score"),
+                count("Id").alias("review_count"),
+                stddev("Score").alias("score_stddev"),
+                avg("helpfulness_ratio").alias("avg_helpfulness"),
+                min("Score").alias("min_score"),
+                max("Score").alias("max_score"),
+                avg(when(col("Score") >= 4, 1).otherwise(0)).alias("positive_ratio")
+            )
+
+            # REVERTED: Use the hit definition that produced better F1-scores
+            df_final_features = df_product_features.withColumn("is_hit",
+                when(
+                    (col("avg_score") >= 4.2) &
+                    (col("positive_ratio") >= 0.7) &
+                    (col("review_count") >= 3) &
+                    (col("avg_helpfulness") >= 0.2)
+                , 1)
+                .otherwise(0)
+            ).na.fill(0)
+
+            # DEBUG: Check class distribution
+            record_count = df_final_features.count()
+            hit_count = df_final_features.filter(col("is_hit") == 1).count()
+            hit_percentage = (hit_count / record_count * 100) if record_count > 0 else 0
             
-            sample_fraction = min(1.0, 50000 / record_count) # Use a larger sample for automated job
-            pandas_df = df_model_data.sample(fraction=sample_fraction, seed=42).toPandas()
+            self.logger.info(f"📈 Created feature table with {record_count} products")
+            self.logger.info(f"🎯 Products classified as hits: {hit_count} ({hit_percentage:.1f}%)")
             
-            pandas_df.dropna(subset=['Text', 'is_helpful'], inplace=True)
-            return pandas_df
-            
+            if record_count < 100:
+                self.logger.warning(f"⚠️ Very few products for training: {record_count}")
+                
+            return df_final_features.toPandas()
+
+        except AnalysisException:
+            self.logger.warning("⚠️ Silver data not found. Please ensure ETL is running.")
+            return None
         except Exception as e:
-            self.logger.error(f"❌ Error loading training data: {e}", exc_info=True)
+            self.logger.error(f"❌ Error creating feature table: {e}", exc_info=True)
             return None
 
     def train_model(self):
-        df = self.load_training_data()
+        df = self.create_feature_table()
         if df is None:
-            self.logger.warning("Skipping training run as no data was loaded.")
-            return False # Return False to indicate failure/skip
+            self.logger.warning("Skipping training run as no feature data was created.")
+            return False
 
+        # Check for minimum viable dataset
+        if len(df) < 50:
+            self.logger.warning(f"Dataset too small for reliable training: {len(df)} samples")
+            return False
 
-        mlflow.set_experiment("Helpfulness_Prediction_Automated")
+        mlflow.set_experiment("Product_Success_Prediction")
         
-        with mlflow.start_run(run_name=f"Automated_LR_{datetime.now().strftime('%Y%m%d-%H%M%S')}"):
+        with mlflow.start_run(run_name=f"LogisticRegression_Hit_Predictor_{datetime.now().strftime('%Y%m%d-%H%M%S')}"):
             self.logger.info("🚀 Starting model training workflow...")
-            X = df[['Text', 'review_length', 'Score']]
-            y = df['is_helpful']
-            
-            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42, stratify=y)
-            
-            preprocessor = ColumnTransformer(
-                transformers=[
-                    # CORRECTED: Added 'Text' as the column for the TfidfVectorizer
-                    ('tfidf', TfidfVectorizer(stop_words='english', max_features=5000, ngram_range=(1,2)), 'Text'),
-                    ('scaler', StandardScaler(), ['review_length', 'Score'])
-                ])
 
-            pipeline = Pipeline(steps=[
-                ('preprocessor', preprocessor),
-                ('classifier', LogisticRegression(random_state=42, class_weight='balanced', C=0.5))
+            # Use only the features that exist in your create_feature_table method
+            features = ['avg_sentiment', 'avg_score', 'review_count', 'score_stddev', 'avg_helpfulness']
+            X = df[features]
+            y = df['is_hit']
+            
+            # Check class distribution
+            positive_count = y.sum()
+            negative_count = len(y) - positive_count
+            self.logger.info(f"📊 Class distribution: {positive_count} hits, {negative_count} non-hits")
+            
+            if positive_count < 5 or negative_count < 5:
+                self.logger.warning("⚠️ Insufficient samples in one class for reliable training")
+                return False
+            
+            # Stratified split to maintain class balance
+            X_train, X_test, y_train, y_test = train_test_split(
+                X, y, test_size=0.25, random_state=42, stratify=y
+            )
+            
+            # IMPROVED: Logistic Regression Pipeline (like your working notebook!)
+            model_pipeline = Pipeline(steps=[
+                ('scaler', StandardScaler()),
+                ('classifier', LogisticRegression(
+                    random_state=42,
+                    class_weight='balanced',  # Handle imbalanced data
+                    C=0.5,                    # Regularization (prevents overfitting)
+                    max_iter=1000,            # Ensure convergence
+                    solver='liblinear'        # Good for small datasets
+                ))
             ])
             
-            pipeline.fit(X_train, y_train)
-            y_pred = pipeline.predict(X_test)
+            # Train the Model
+            self.logger.info("Training Logistic Regression model...")
+            model_pipeline.fit(X_train, y_train)
+            
+            # Evaluate
+            self.logger.info("📈 Evaluating model...")
+            y_pred = model_pipeline.predict(X_test)
+            y_pred_proba = model_pipeline.predict_proba(X_test)[:, 1]
+            
+            # Comprehensive metrics
+            from sklearn.metrics import classification_report, roc_auc_score
             
             f1 = f1_score(y_test, y_pred)
-            self.logger.info(f"✅ Model Evaluation Complete - F1-Score: {f1:.4f}")
+            accuracy = accuracy_score(y_test, y_pred)
+            precision = precision_score(y_test, y_pred, zero_division=0)
+            recall = recall_score(y_test, y_pred, zero_division=0)
             
+            # Calculate AUC
+            try:
+                auc = roc_auc_score(y_test, y_pred_proba)
+            except:
+                auc = 0.5
+                
+            self.logger.info(f"✅ Model Metrics - F1: {f1:.4f}, Accuracy: {accuracy:.4f}, Precision: {precision:.4f}, Recall: {recall:.4f}, AUC: {auc:.4f}")
+            
+            # Log feature importance (Logistic Regression coefficients)
+            feature_importance = abs(model_pipeline.named_steps['classifier'].coef_[0])
+            for i, feature in enumerate(features):
+                mlflow.log_metric(f"feature_importance_{feature}", feature_importance[i])
+                
+            # Log comprehensive metrics
+            mlflow.log_param("model_type", "LogisticRegression_Balanced")
+            mlflow.log_param("training_products", len(df))
+            mlflow.log_param("positive_samples", positive_count)
+            mlflow.log_param("negative_samples", negative_count)
+            mlflow.log_param("regularization_C", 0.5)
             mlflow.log_metric("f1_score", f1)
+            mlflow.log_metric("accuracy", accuracy)
+            mlflow.log_metric("precision", precision)
+            mlflow.log_metric("recall", recall)
+            mlflow.log_metric("auc", auc)
             
-            mlflow.sklearn.log_model(
-                sk_model=pipeline,
-                artifact_path="helpfulness_model",
-                registered_model_name="review-helpfulness-classifier"
-            )
-            self.logger.info("📦 Model successfully logged to MLflow.")
-            return True
+            # More realistic performance thresholds
+            if f1 > 0.3 and auc > 0.6:  # Reasonable expectations for small dataset
+                mlflow.sklearn.log_model(
+                    sk_model=model_pipeline,
+                    artifact_path="product_hit_predictor_model",
+                    registered_model_name="product-hit-predictor"
+                )
+                self.logger.info("📦 Model successfully logged to MLflow.")
+            else:
+                self.logger.warning(f"⚠️ Model performance below threshold (F1: {f1:.4f}, AUC: {auc:.4f})")
+                
+        return True

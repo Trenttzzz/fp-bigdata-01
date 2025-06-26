@@ -1,21 +1,21 @@
-FROM node:18-alpine
+# Use a standard Python slim image as the base
+FROM python:3.9-slim
 
+# Set the working directory in the container
 WORKDIR /app
 
-# Copy package files
-COPY ./dashboard/package*.json ./
+# Install Python dependencies for the dashboard
+RUN pip install --no-cache-dir \
+    streamlit==1.31.0 \
+    pandas==2.1.4 \
+    plotly==5.18.0 \
+    requests==2.31.0
 
-# Install dependencies
-RUN npm install
+# Copy the dashboard application code into the container
+COPY ./dashboard/ /app/
 
-# Copy source code
-COPY ./dashboard/ .
-
-# Build the app
-RUN npm run build
-
-# Expose port
+# Expose the port that Streamlit runs on
 EXPOSE 3000
 
-# Run the app
-CMD ["npm", "start"]
+# The command to run the Streamlit app
+CMD ["streamlit", "run", "app.py", "--server.port=3000", "--server.address=0.0.0.0"]
