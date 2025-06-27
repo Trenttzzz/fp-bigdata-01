@@ -261,136 +261,42 @@ After getting the system running:
 4. **Experiment with your own data** by modifying the producer
 5. **Scale the system** by adding more Spark workers
 
-## Need Help?
+## UI Documentation
 
-- Check service logs: `docker-compose logs <service-name>`
-- Run status check: `./scripts/check-status.sh`
-- Ensure Docker has enough memory (8GB recommended)
-- Try restarting problematic services: `docker-compose restart <service-name>`
+### Dashboard
 
-**Happy Data Engineering! 🚀**
+![Dashboard Screenshot](assets/ui-docs.jpg)
 
-```sh
-docker-compose restart kafka
-```
+#### Key Metrics Overview
+- **Total Products:** 1,422 products analyzed
+- **Average Product Score:** 4.16 rating scale
+- **Predicted Hits:** 297 products identified as potential hits
+- **Hit Rate:** Visual circular progress indicator showing prediction accuracy
 
-#### 9.2 Service Dependency Issues
+#### Product Explorer
+The left panel displays the top 100 products ranked by review count, featuring:
+- **Product ID:** Unique identifier for each product
+- **Average Score:** Customer rating (1-5 scale)
+- **Review Count:** Number of customer reviews
+- **Average Helpfulness:** Review quality metric (0-1 scale)
+- **Prediction:** Real-time hit/not hit classification with color-coded indicators
+  - 🔴 Red X: "Not Hit" prediction
+  - 🟢 Green checkmark: "Hit" prediction
 
-Services have startup dependencies. If services fail with "dependency failed":
+#### Product Success Prediction Panel
+The right panel provides detailed analytics:
+- **Average Sentiment:** 0.74 (positive sentiment scale)
+- **Average Score:** 4.3 rating
+- **Review Count:** 239 total reviews
+- **Score Standard Deviation:** 0.46 (consistency metric)
+- **Average Helpfulness:** 0.77 quality score
 
-1. **Check the dependency chain:**
+#### Live Prediction Result
+- **Status:** "It's a HIT! 🎉" with celebratory indicators
+- **Model Version:** Currently using Model Version 2
+- Real-time prediction outcome display with visual feedback
 
-   ```sh
-   docker-compose ps
-   ```
+The dashboard updates in real-time, with the last update timestamp showing "2025-06-27 05:37:30 UTC", ensuring users have access to the most current predictions and analytics.
 
-2. **Restart in dependency order:**
-   ```sh
-   docker-compose up -d minio
-   docker-compose up -d postgres
-   docker-compose up -d automq
-   docker-compose up -d spark-master
-   # Then other services
-   ```
 
-#### 9.3 JupyterLab Access Issues
 
-If JupyterLab is not accessible:
-
-1. **Get the access token:**
-
-   ```sh
-   docker-compose logs jupyter | grep token
-   ```
-
-2. **Use the full URL with token:**
-   ```
-   http://localhost:8888/lab?token=<your-token>
-   ```
-
-#### 9.4 MLflow Model API Issues
-
-If the Model API returns 404 for model predictions:
-
-1. **Verify model registration in MLflow UI** at `http://localhost:5000`
-2. **Ensure model stage is set to "Production" or "Staging"**
-3. **Check model name matches the API endpoint**
-4. **Verify MLflow connectivity:**
-   ```sh
-   docker-compose logs model-api
-   ```
-
-#### 9.5 Memory and Performance Issues
-
-If services are slow or failing due to resource constraints:
-
-1. **Monitor resource usage:**
-
-   ```sh
-   docker stats
-   ```
-
-2. **Increase Docker memory allocation** (Docker Desktop → Settings → Resources)
-
-3. **Reduce service count for testing:**
-   Comment out non-essential services in docker-compose.yml
-
-4. **Clean up Docker resources:**
-   ```sh
-   docker system prune -a
-   ```
-
-#### 9.6 Network Connectivity Issues
-
-If services cannot communicate:
-
-1. **Check network status:**
-
-   ```sh
-   docker network ls
-   docker network inspect fp-bigdata-01_lakehouse
-   ```
-
-2. **Restart the entire stack:**
-   ```sh
-   docker-compose down
-   docker-compose up -d
-   ```
-
-#### 9.7 Data Volume Issues
-
-If data is not persisting or volumes have permission issues:
-
-1. **Check volume status:**
-
-   ```sh
-   docker volume ls
-   docker volume inspect fp-bigdata-01_minio_data
-   ```
-
-2. **Reset all data (USE WITH CAUTION):**
-   ```sh
-   docker-compose down -v
-   docker-compose up -d
-   ```
-
-### Debug Commands
-
-- **View all service logs:** `docker-compose logs`
-- **View specific service logs:** `docker-compose logs <service-name>`
-- **Follow logs in real-time:** `docker-compose logs -f <service-name>`
-- **Check service health:** `docker-compose ps`
-- **Restart specific service:** `docker-compose restart <service-name>`
-- **Access service shell:** `docker-compose exec <service-name> /bin/bash`
-
-### Getting Help
-
-If you encounter issues not covered here:
-
-1. Check the logs for specific error messages
-2. Verify all prerequisites are met
-3. Ensure Docker has sufficient resources allocated
-4. Try restarting the problematic service
-5. Consider running a subset of services for testing
-
-For persistent issues, please check the project repository for known issues and solutions.
